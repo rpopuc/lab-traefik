@@ -1,0 +1,65 @@
+version: '3'
+
+services:
+
+    proxy:
+      image: traefik:v2.5
+      volumes:
+        - ./config/traefik:/etc/traefik                                 # configuração do traefik
+        - .docker/data/traefik/certs:/ssl-certs                         # certificados gerados
+        - /var/run/docker.sock:/var/run/docker.sock:ro                  # acesso aos eventos do docker
+      ports:
+        - "80:80"
+        - "443:443"
+        - "8080:8080"                                                   # Portal do Traefik. Não use isso em produção
+
+    app_a:
+      image: nginx:latest
+      volumes:
+        - ./config/nginx/app_a.html:/usr/share/nginx/html/index.html
+      labels:
+        - "traefik.enable=true"                                         # Ativa este container para o traefik.
+        - "traefik.http.routers.app_a.entrypoints=web,websecure"        # Indicação de quais entrypoints usar. Os entrypoints são configurados no `traefik.yml`.
+        - "traefik.http.routers.app_a.rule=Host(\"nginx.local\")"       # Indicação do endpoint que estará disponível.
+        - "traefik.http.routers.app_a.tls=true"                         # Indicação de que esse serviço utilizara https.
+        - "traefik.http.routers.app_a.tls.certresolver=staging"         # Indicação do `resolver` para obtenção do certificado.
+        - "traefik.http.services.app_a.loadbalancer.server.port=80"     # Indicação da porta de entrada do serviço (isto é, para onde o proxy deverá obter as respostas).
+
+    app_b:
+      image: nginx:latest
+      volumes:
+        - ./config/nginx/app_b.html:/usr/share/nginx/html/index.html
+      labels:
+        - "traefik.enable=true"                                         # Ativa este container para o traefik.
+        - "traefik.http.routers.app_b.entrypoints=web,websecure"        # Indicação de quais entrypoints usar. Os entrypoints são configurados no `traefik.yml`.
+        - "traefik.http.routers.app_b.rule=Host(\"app.local\")"         # Indicação do endpoint que estará disponível.
+        - "traefik.http.routers.app_b.tls=true"                         # Indicação de que esse serviço utilizara https.
+        - "traefik.http.routers.app_b.tls.certresolver=staging"         # Indicação do `resolver` para obtenção do certificado.
+        - "traefik.http.services.app_b.loadbalancer.server.port=80"     # Indicação da porta de entrada do serviço (isto é, para onde o proxy deverá obter as respostas).
+
+    sub_app_b:
+      image: nginx:latest
+      volumes:
+        - ./config/nginx/app_sub_b.html:/usr/share/nginx/html/index.html
+      labels:
+        # Ativa este container para o traefik.
+        - "traefik.enable=true"
+
+        # Indicação de quais entrypoints usar. Os entrypoints são configurados no `traefik.yml`.
+        - "traefik.http.routers.sub_b.entrypoints=web,websecure"
+
+        # Indicação do endpoint que estará disponível, com um path.
+        - "traefik.http.routers.sub_b.rule=(Host(\"app.local\") && Path(\"/sub\",\"/sub/\"))"
+
+        # Indicação de que esse serviço utilizara https.
+        - "traefik.http.routers.sub_b.tls=true"
+
+        # Indicação do `resolver` para obtenção do certificado.
+        - "traefik.http.routers.sub_b.tls.certresolver=staging"
+
+        # Configura o middleware para remover o path antes de repassar a requisição.
+        - "traefik.http.middlewares.sub_b-strip.stripprefix.prefixes=/sub"
+        - "traefik.http.middlewares.sub_b-strip.stripprefix.forceSlash=true"
+
+        # Utiliza o middleware configurado
+        - "traefik.http.routers.sub_b.middlewares=sub_b-strip@docker"

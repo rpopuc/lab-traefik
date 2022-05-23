@@ -1,0 +1,5 @@
+node_modules/
+/vendor/
+.docker/data
+.bash_history
+config/traefik/certs
